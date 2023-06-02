@@ -1,0 +1,155 @@
+<head>
+	<style>
+		body {
+			margin: 0;
+		}
+	</style>
+
+	<script src="//unpkg.com/d3-dsv"></script>
+	<script src="//unpkg.com/dat.gui"></script>
+	<script src="//unpkg.com/d3-octree"></script>
+	<script src="//unpkg.com/d3-force-3d"></script>
+	<script src="//unpkg.com/three"></script>
+	<script src="//unpkg.com/three-spritetext"></script>
+	<script src="//unpkg.com/3d-force-graph"></script>
+	<!--<script src="../../dist/3d-force-graph.js"></script>-->
+</head>
+
+<body>
+	<div id="graph"></div>
+	<script src="roi.js" type="text/javascript"></script>
+	<script>
+		roi = roi.sort((a,b)=>b[2]-a[2])
+	</script>
+	
+	<script >
+
+		// controls
+	
+		const controls = { "DAG Orientation": "td", "Auto Rotate": false };
+		const gui = new dat.GUI();
+		var camera;
+    	const distance = 300;
+
+		gui
+			.add(controls, "DAG Orientation", [
+				"td",
+				"bu",
+				"lr",
+				"rl",
+				"zout",
+				"zin",
+				"radialout",
+				"radialin",
+				null,
+			])
+			.onChange((orientation) => graph && graph.dagMode(orientation));
+		gui.add(controls, "Auto Rotate").onChange((autoRotate) => {
+			 if(autoRotate){
+        // camera orbit
+          let angle = 0;
+          setInterval(() => {
+            graph.cameraPosition({
+              x: distance * Math.sin(angle),
+              z: distance * Math.cos(angle)
+            });
+            angle += Math.PI / 240;
+          }, 10);
+       }
+      
+		});
+
+		const ticked = function () {
+			tmp = graph.graphData().nodes.sort((a,b)=>a.group-b.group)
+			
+			tmp.forEach((d,i) => {
+				// d.y = 60 + -30 * d.group;
+				d.x = roi[i%300][1]
+				d.y = roi[i%300][2]+30
+				d.z = roi[i%300][0]
+
+				if(d.group == 4){
+					d.x = Math.sin((Math.PI*2/13) * i) * 60
+					d.z = Math.cos((Math.PI*2/13) * i) * 60
+					d.y = -30
+				}
+			});
+		};
+
+		const stop = function () {
+			graph.graphData().nodes.forEach(node=>{
+			if(node.group == 4){
+				const sprite = new SpriteText(node.id);
+				sprite.material.depthWrite = false; // make sprite background transparent
+				sprite.color = NODE_COLOR[4];
+				sprite.textHeight = 6;
+				sprite.position.x = node.x
+				sprite.position.y = node.y - 10
+				sprite.position.z = node.z
+				graph.scene().add(sprite)
+			}
+		});
+		};
+
+		// graph config
+		const NODE_REL_SIZE = 1;
+		const NODE_COLOR = ['#8E2DE2','#56D3D1','#0072FF','#4A00E0','#C53F50'];
+		const graph = ForceGraph3D()
+			// .dagMode("td")
+			.dagLevelDistance(20)
+			.backgroundColor("#101020")
+			.linkColor(() => "rgba(255,255,255,0.2)")
+			.linkWidth(1)
+			.nodeRelSize(NODE_REL_SIZE)
+			.nodeId("id")
+			.nodeVal(node=>node.group==4?200:20)
+			.nodeLabel("name")
+			// .nodeAutoColorBy("group")
+			.nodeColor(d=>NODE_COLOR[d.group])
+			.nodeOpacity(0.9)
+      		.nodeResolution(16)
+			.linkDirectionalParticles(1)
+			.linkDirectionalParticleWidth(1)
+			.linkDirectionalParticleSpeed(0.01)
+			.linkDirectionalParticleColor(() => "rgba(238, 130, 238, 0.5)")
+			
+			.d3Force(
+				"collision",
+				d3.forceCollide((node) => Math.cbrt(node.size) * NODE_REL_SIZE)
+			)
+			.d3VelocityDecay(0.3)
+			.onEngineTick(ticked)
+			.onEngineStop(stop)
+			.dagNodeFilter(d=>['c_10066111'].includes(d.id))
+		// .nodeThreeObject(node => {
+		// 	if(node.group==4){
+		// 		const sprite = new SpriteText(node.id);
+		// 		sprite.material.depthWrite = false; // make sprite background transparent
+		// 		sprite.color = NODE_COLOR[4];
+		// 		sprite.textHeight = 4;
+		// 		return sprite;
+		// 	}
+		   
+		//   })
+		//   .nodeThreeObjectExtend(true)
+
+
+		// Decrease repel intensity
+		graph.d3Force("charge").strength(-15);
+
+		const light = new THREE.AmbientLight( 0x404040 ); // soft white light
+    	graph.scene().add( light );
+
+	
+
+		// const plight = new THREE.PointLight( 0xff0000, 1, 100 );
+		// plight.position.set( 50, 50, 50 );
+		// graph.scene().add( plight );
+
+		graph(document.getElementById("graph")).jsonUrl("bn.json");
+		
+
+    (function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();document.body.appendChild(stats.dom);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='//mrdoob.github.io/stats.js/build/stats.min.js';document.head.appendChild(script);})()
+	</script>
+  
+</body>

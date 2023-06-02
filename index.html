@@ -1,0 +1,261 @@
+<head>
+	<style>
+		html, body, #graph {
+    height: 100%;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+  }
+		body {	
+			background-image: url(./assets/hydra_constellation.jpg);
+		}
+		
+	</style>
+
+	<script src="d3-dsv@3.0.1/dist/d3-dsv.min.js"></script>
+	<script src="dat.gui@0.7.9/build/dat.gui.js"></script>
+	<script src="d3-octree@1.0.2/dist/d3-octree.min.js"></script>
+	<script src="d3-force-3d@3.0.5/dist/d3-force-3d.min.js"></script>
+	<script src="three@0.147.0/build/three.js"></script>
+	<script src="three-spritetext@1.8.1/dist/three-spritetext.min.js"></script>
+	<script src="3d-force-graph@1.71.4/dist/3d-force-graph.min.js"></script>
+  <script src="three/examples/js/postprocessing/Pass.js"></script>
+  <script src="three/examples/js/shaders/CopyShader.js"></script>
+  <script src="three/examples/js/shaders/LuminosityHighPassShader.js"></script>
+  <script src="three/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+	<!--<script src="../../dist/3d-force-graph.js"></script>-->
+</head>
+
+<body>
+	<div id="graph"></div>
+
+	<script>
+		// controls
+		const controls = { "DAG Orientation": "td", "Auto Rotate": false };
+		const gui = new dat.GUI();
+		var camera;
+    const distance = 300;
+		gui
+			.add(controls, "DAG Orientation", [
+				"td",
+				"bu",
+				"lr",
+				"rl",
+				"zout",
+				"zin",
+				"radialout",
+				"radialin",
+				null,
+			])
+			.onChange((orientation) => graph && graph.dagMode(orientation));
+		gui.add(controls, "Auto Rotate").onChange((autoRotate) => {
+			 if(autoRotate){
+        // camera orbit
+          let angle = 0;
+          setInterval(() => {
+            graph.cameraPosition({
+              x: distance * Math.sin(angle),
+              z: distance * Math.cos(angle)
+            });
+            angle += Math.PI / 2400;
+          }, 10);
+       }
+      
+		});
+
+		const ticked = function () {
+			graph.graphData().nodes.forEach((d,i) => {
+				d.y = 100 + -30 * d.group;
+				
+				
+			});
+
+			graph.graphData().nodes.filter(node=>node.group==4).forEach((d,i)=>{
+				
+					d.x = Math.sin((Math.PI*2/13) * i) * 100
+					d.z = Math.cos((Math.PI*2/13) * i) * 100
+					d.y = -30
+				
+			});
+		};
+
+		const stop = function () {
+			graph.graphData().nodes.forEach(node=>{
+				if(node.group == 4){
+					const sprite = new SpriteText(node.id);
+					sprite.material.depthWrite = false; // make sprite background transparent
+					sprite.color = NODE_COLOR[4];
+					sprite.textHeight = 6;
+					sprite.position.x = node.x
+					sprite.position.y = node.y - 15
+					sprite.position.z = node.z
+					graph.scene().add(sprite)
+				}
+			});
+		};
+
+		// graph config
+		const NODE_REL_SIZE = 1;
+		//const NODE_COLOR = ['#801500','#558000','#008040','#002B80','#6B0080'];
+		const NODE_COLOR = ['#FF2B00','#ABFF00','#00FF80','#0055FF','#D500FF'];
+		let highlightNodes = new Array();
+    	let highlightLinks = new Array();
+		let highlightNodes_ = new Array();
+    	let highlightLinks_ = new Array();
+		let hoverNode;
+		const graph = ForceGraph3D()
+			// .dagMode("td")
+			.dagLevelDistance(20)
+			.backgroundColor("#101020")
+			.linkColor(link => highlightLinks.find(l=>l.source.id==link.source.id&&l.target.id==link.target.id) ? "rgba(255,255,255,0.8)":"rgba(255,255,255,0.2)")
+			.linkWidth(link => highlightLinks.find(l=>l.source.id==link.source.id&&l.target.id==link.target.id) ? .2 : .1)
+			.nodeRelSize(NODE_REL_SIZE)
+			.nodeId("id")
+			.nodeVal(node=>{
+				if(node.group==4){
+					return 400
+				}else{
+					return 20
+				}
+			})
+			.nodeLabel("desc")
+			// .nodeAutoColorBy("group")
+			.nodeColor(node => highlightNodes.find(d=>d.id==node.id) ? 'rgba(255,180,0,0.8)' : NODE_COLOR[node.group])
+			.nodeOpacity(0.9)
+      		.nodeResolution(16)
+			.linkDirectionalParticles(1)
+			// .linkDirectionalParticleWidth(.1)
+			.linkDirectionalParticleWidth(link => highlightLinks.find(l=>l.source.id==link.source.id&&l.target.id==link.target.id) ? .5 : .1)
+			// .linkDirectionalParticleSpeed(0.001)
+			.linkDirectionalParticleSpeed(link => highlightLinks.find(l=>l.source.id==link.source.id&&l.target.id==link.target.id) ? 0.05 : 0.01)
+			.linkDirectionalParticleColor(() => "rgba(255, 255, 255, 0.5)")
+			
+			.d3Force(
+				"collision",
+				d3.forceCollide((node) => Math.cbrt(node.size) * NODE_REL_SIZE)
+			)
+			.d3VelocityDecay(0.3)
+			.onEngineTick(ticked)
+			.onEngineStop(stop)
+			.dagNodeFilter(d=>['c_10066111'].includes(d.id))
+			.onNodeClick(node => {
+				// no state change
+				if ((!node && !highlightNodes.length) || (node && hoverNode === node)) return;
+
+				highlightNodes_.splice(0, highlightNodes_.length);
+				highlightLinks_.splice(0, highlightLinks_.length);
+				if (node) {
+					highlightNodes_.push(node);
+
+					data = graph.graphData()
+
+					var walk = function(node, links){
+						
+						links.filter(l=>l.source.id==node.id).forEach(l=>{
+							if(!highlightNodes_.find(d=>d.id==l.target.id)){
+								highlightNodes_.push(l.target)
+							}
+							if(!highlightLinks_.find(link=>l.source.id==link.source.id&&l.target.id==link.target.id)){
+								highlightLinks_.push(l)
+								walk(l.target,links)
+							}
+						})
+					}
+
+					walk(node,data.links)
+					
+				}
+
+				hoverNode = node || null;
+
+				highlightNodes.splice(0, highlightNodes.length);
+				highlightLinks.splice(0, highlightLinks.length);
+
+				highlightNodes_ = highlightNodes_.sort((a,b)=> a.group-b.group)
+				
+				update()
+			})
+			.onLinkHover(link => {
+				// highlightNodes.clear();
+				// highlightLinks.clear();
+
+				// if (link) {
+				// 	highlightLinks.add(link);
+				// 	highlightNodes.add(link.source);
+				// 	highlightNodes.add(link.target);
+				// }
+
+				// updateHighlight();
+			})
+		// .nodeThreeObject(node => {
+		// 	if(node.group==4){
+		// 		const sprite = new SpriteText(node.id);
+		// 		sprite.material.depthWrite = false; // make sprite background transparent
+		// 		sprite.color = NODE_COLOR[4];
+		// 		sprite.textHeight = 4;
+		// 		return sprite;
+		// 	}
+		   
+		//   })
+		//   .nodeThreeObjectExtend(true)
+
+
+		// Decrease repel intensity
+		graph.d3Force("charge").strength(-15);
+
+	
+
+		// const light = new THREE.AmbientLight( 0x404040 ); // soft white light
+    	// graph.scene().add( light );
+
+    // const plight = new THREE.PointLight( 0xff0000, 1, 100 );
+    // plight.position.set( 50, 50, 50 );
+    // graph.scene().add( plight );
+
+		graph(document.getElementById("graph")).jsonUrl("bn.json");
+
+		const bloomPass = new THREE.UnrealBloomPass();
+		bloomPass.strength = 5;
+		bloomPass.radius = 1;
+		bloomPass.threshold = 1;
+		graph.postProcessingComposer().addPass(bloomPass);
+
+		function updateHighlight() {
+		// trigger update of highlighted objects in scene
+			graph
+				.nodeColor(graph.nodeColor())
+				.linkWidth(graph.linkWidth())
+				.linkDirectionalParticles(graph.linkDirectionalParticles());
+		}
+
+		var update = function(){
+			
+			var t_node
+			if(highlightNodes_.length>0){
+				t_node = highlightNodes_.shift()
+				highlightNodes.push(t_node)
+			}
+
+			highlightLinks_.filter(l=>l.target.id==t_node.id).forEach(l=>{
+				highlightLinks.push(l)
+			})
+			
+			// if(highlightLinks_.length>0){
+			// 	highlightLinks.push(highlightLinks_.shift())
+			// }
+
+			updateHighlight();
+
+			if(highlightNodes_.length>0){
+				setTimeout(update,100)
+			}
+
+		};
+
+		
+
+    (function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();document.body.appendChild(stats.dom);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='//mrdoob.github.io/stats.js/build/stats.min.js';document.head.appendChild(script);})()
+	</script>
+  
+</body>
